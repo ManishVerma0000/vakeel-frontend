@@ -176,52 +176,88 @@ const LawyerDashboard: React.FC = () => {
     }
   };
 
-  // Initialize WebRTC peer connection
-  const initializePeerConnection = async () => {
-    try {
-      // Get user media - VOICE ONLY
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: false,
-        audio: true,
-      });
-      setLocalStream(stream);
+     // Initialize WebRTC peer connection
+   const initializePeerConnection = async () => {
+     try {
+       console.log("Requesting microphone access...");
+       
+       // Check if getUserMedia is supported
+       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+         throw new Error("getUserMedia is not supported in this browser");
+       }
 
-      // Create peer connection
-      const peerConnection = new RTCPeerConnection({
-        iceServers: [
-          { urls: "stun:stun.l.google.com:19302" },
-          { urls: "stun:stun1.l.google.com:19302" },
-        ],
-      });
+       // Get user media - VOICE ONLY
+       const stream = await navigator.mediaDevices.getUserMedia({
+         video: false,
+         audio: {
+           echoCancellation: true,
+           noiseSuppression: true,
+           autoGainControl: true
+         }
+       });
+       
+       console.log("Microphone access granted:", stream.getAudioTracks().length, "audio tracks");
+       setLocalStream(stream);
 
-      peerConnectionRef.current = peerConnection;
+       // Create peer connection
+       const peerConnection = new RTCPeerConnection({
+         iceServers: [
+           { urls: "stun:stun.l.google.com:19302" },
+           { urls: "stun:stun1.l.google.com:19302" },
+         ],
+       });
 
-      // Add local stream to peer connection
-      stream.getTracks().forEach((track) => {
-        peerConnection.addTrack(track, stream);
-      });
+       peerConnectionRef.current = peerConnection;
 
-      // Handle remote stream
-      peerConnection.ontrack = (event) => {
-        setRemoteStream(event.streams[0]);
-        setCallState(prev => ({ ...prev, isConnected: true }));
-      };
+       // Add local stream to peer connection
+       stream.getTracks().forEach((track) => {
+         peerConnection.addTrack(track, stream);
+       });
 
-      // Handle ICE candidates
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate && ws && callState.callerId) {
-          ws.send(JSON.stringify({
-            type: "ice-candidate",
-            targetId: callState.callerId,
-            data: event.candidate
-          }));
-        }
-      };
-    } catch (error) {
-      console.error("Error initializing peer connection:", error);
-      alert("Failed to access camera/microphone");
-    }
-  };
+       // Handle remote stream
+       peerConnection.ontrack = (event) => {
+         setRemoteStream(event.streams[0]);
+         setCallState(prev => ({ ...prev, isConnected: true }));
+       };
+
+       // Handle ICE candidates
+       peerConnection.onicecandidate = (event) => {
+         if (event.candidate && ws && callState.callerId) {
+           ws.send(JSON.stringify({
+             type: "ice-candidate",
+             targetId: callState.callerId,
+             data: event.candidate
+           }));
+         }
+       };
+     } catch (error) {
+       console.error("Error initializing peer connection:", error);
+       
+       let errorMessage = "Failed to access microphone";
+       
+       if (error instanceof DOMException) {
+         switch (error.name) {
+           case 'NotAllowedError':
+             errorMessage = "Microphone access denied. Please allow microphone access in your browser settings.";
+             break;
+           case 'NotFoundError':
+             errorMessage = "No microphone found. Please check your microphone connection.";
+             break;
+           case 'NotReadableError':
+             errorMessage = "Microphone is already in use by another application.";
+             break;
+           case 'OverconstrainedError':
+             errorMessage = "Microphone doesn't meet the required constraints.";
+             break;
+           default:
+             errorMessage = `Microphone error: ${error.message}`;
+         }
+       }
+       
+       alert(errorMessage);
+       console.error("Detailed error:", error);
+     }
+   };
 
   const handleOffer = async (data: any) => {
     if (peerConnectionRef.current) {
