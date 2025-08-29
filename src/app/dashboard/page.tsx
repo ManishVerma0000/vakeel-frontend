@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { User, Send, Phone, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { getBackendUrl, getWebSocketUrl } from "../config";
 
 interface Lawyer {
   id: string;
@@ -43,7 +44,7 @@ const Dashboard: React.FC = () => {
     setUser({ email: userEmail, role: userRole });
 
     // Initialize WebSocket connection
-    const websocket = new WebSocket("ws://192.168.0.180:4000");
+    const websocket = new WebSocket(getWebSocketUrl());
     
     websocket.onopen = () => {
       console.log("WebSocket connected");
@@ -102,7 +103,7 @@ const Dashboard: React.FC = () => {
 
   const fetchLawyers = async () => {
     try {
-      const response = await fetch("http://192.168.0.180:4000/lawyers");
+      const response = await fetch(`${getBackendUrl()}/lawyers`);
       const data = await response.json();
       setLawyers(data.lawyers);
     } catch (error) {
@@ -113,7 +114,7 @@ const Dashboard: React.FC = () => {
   const updateStatus = async (newStatus: string) => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("http://192.168.0.180:4000/lawyers/status", {
+      const response = await fetch(`${getBackendUrl()}/lawyers/status`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { Eye, EyeOff, LogIn } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { getBackendUrl } from "../config";
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -23,7 +24,7 @@ const LoginPage: React.FC = () => {
       const endpoint = isRegister ? "/register" : "/login";
       const body = isRegister ? { email, password, role } : { email, password };
 
-      const response = await fetch(`http://192.168.0.180:4000${endpoint}`, {
+      const response = await fetch(`${getBackendUrl()}${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -38,13 +39,10 @@ const LoginPage: React.FC = () => {
       }
 
       if (data.token) {
-        // Store token and user info
         localStorage.setItem("token", data.token);
         localStorage.setItem("userId", data.user.id);
         localStorage.setItem("userEmail", data.user.email);
         localStorage.setItem("userRole", data.user.role);
-
-        // Redirect based on role
         if (data.user.role === "LAWYER") {
           router.push("/lawyer-dashboard");
         } else {
@@ -184,14 +182,9 @@ const LoginPage: React.FC = () => {
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-gray-300" />
             </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-gray-100 text-gray-500">Sample Credentials</span>
-            </div>
+           
           </div>
-          <div className="mt-4 space-y-2 text-xs text-gray-600">
-            <p><strong>Lawyer:</strong> lawyer1@example.com / password123</p>
-            <p><strong>Client:</strong> client1@example.com / password123</p>
-          </div>
+          
         </div>
       </div>
     </div>

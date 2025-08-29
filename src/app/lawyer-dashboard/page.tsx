@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, PhoneIncoming, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { getBackendUrl, getWebSocketUrl } from "../config";
 
 interface CallState {
   isIncoming: boolean;
@@ -45,6 +46,38 @@ const LawyerDashboard: React.FC = () => {
 
   const router = useRouter();
 
+  const [callDuration, setCallDuration] = useState(0);
+const callTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+// Add this useEffect for call timer
+useEffect(() => {
+  if (callState.isConnected) {
+    setCallDuration(0);
+    callTimerRef.current = setInterval(() => {
+      setCallDuration(prev => prev + 1);
+    }, 1000);
+  } else {
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+    setCallDuration(0);
+  }
+  
+  return () => {
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+    }
+  };
+}, [callState.isConnected]);
+
+// Helper function to format time
+const formatCallDuration = (seconds: number) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
   useEffect(() => {
     // Check if user is logged in
     const token = localStorage.getItem("token");
@@ -57,7 +90,7 @@ const LawyerDashboard: React.FC = () => {
     }
 
     // Initialize WebSocket connection
-    const websocket = new WebSocket("ws://192.168.0.180:4000");
+    const websocket = new WebSocket(getWebSocketUrl());
     
     websocket.onopen = () => {
       console.log("WebSocket connected");
@@ -101,14 +134,17 @@ const LawyerDashboard: React.FC = () => {
           break;
         
         case "call-accepted":
-          setCallState(prev => ({
-            ...prev,
-            isIncoming: false,
-            receiverId: data.receiverId,
-            receiverEmail: data.receiverEmail,
-          }));
-          initializePeerConnection();
-          break;
+  console.log("Call accepted, initializing connection...");
+  setCallState(prev => ({
+    ...prev,
+    isIncoming: false,
+    isConnected: false, // This will be set to true when WebRTC connects
+    receiverId: data.receiverId,
+    receiverEmail: data.receiverEmail,
+  }));
+  // Initialize peer connection immediately
+  initializePeerConnection();
+  break;
         
         case "call-rejected":
           setCallState({
@@ -159,7 +195,7 @@ const LawyerDashboard: React.FC = () => {
   const updateStatus = async (newStatus: string) => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("http://192.168.0.180:4000/lawyers/status", {
+      const response = await fetch(`${getBackendUrl()}/lawyers/status`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -176,25 +212,39 @@ const LawyerDashboard: React.FC = () => {
     }
   };
 
-     // Initialize WebRTC peer connection
-   const initializePeerConnection = async () => {
-     try {
-       console.log("Requesting microphone access...");
-       
-       // Check if getUserMedia is supported
-       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-         throw new Error("getUserMedia is not supported in this browser");
-       }
+         // Initialize WebRTC peer connection
+    const initializePeerConnection = async () => {
+      try {
+        console.log("Requesting microphone access...");
+        
+        // Check if getUserMedia is supported
+        if (!navigator.mediaDevices) {
+          throw new Error("MediaDevices API is not supported in this browser. Please use a modern browser like Chrome, Firefox, Safari, or Edge.");
+        }
 
-       // Get user media - VOICE ONLY
-       const stream = await navigator.mediaDevices.getUserMedia({
-         video: false,
-         audio: {
-           echoCancellation: true,
-           noiseSuppression: true,
-           autoGainControl: true
-         }
-       });
+        if (!navigator.mediaDevices.getUserMedia) {
+          throw new Error("getUserMedia API is not supported in this browser. Please use a modern browser with WebRTC support.");
+        }
+
+        // Get user media - VOICE ONLY with fallback
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: false,
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            }
+          });
+        } catch (mediaError) {
+          console.log("Advanced audio constraints failed, trying basic audio...");
+          // Fallback to basic audio constraints
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: false,
+            audio: true
+          });
+        }
        
        console.log("Microphone access granted:", stream.getAudioTracks().length, "audio tracks");
        setLocalStream(stream);
@@ -215,21 +265,31 @@ const LawyerDashboard: React.FC = () => {
        });
 
        // Handle remote stream
-       peerConnection.ontrack = (event) => {
-         setRemoteStream(event.streams[0]);
-         setCallState(prev => ({ ...prev, isConnected: true }));
-       };
+       // Handle remote stream
+peerConnection.ontrack = (event) => {
+  console.log("Remote stream received:", event.streams[0]);
+  setRemoteStream(event.streams[0]);
+  setCallState(prev => ({ 
+    ...prev, 
+    isConnected: true // This should trigger the call UI
+  }));
+  
+  // Play remote audio
+  const remoteAudio = new Audio();
+  remoteAudio.srcObject = event.streams[0];
+  remoteAudio.play().catch(console.error);
+};
 
        // Handle ICE candidates
        peerConnection.onicecandidate = (event) => {
-         if (event.candidate && ws && callState.callerId) {
-           ws.send(JSON.stringify({
-             type: "ice-candidate",
-             targetId: callState.callerId,
-             data: event.candidate
-           }));
-         }
-       };
+  if (event.candidate && ws && callState.callerId) {
+    ws.send(JSON.stringify({
+      type: "ice-candidate",
+      targetId: callState.callerId, // Use callerId for lawyer
+      data: event.candidate
+    }));
+  }
+};
      } catch (error) {
        console.error("Error initializing peer connection:", error);
        
@@ -286,16 +346,27 @@ const LawyerDashboard: React.FC = () => {
   };
 
   // Accept incoming call
-  const acceptCall = () => {
-    if (callState.callerId && ws) {
-      console.log("Lawyer accepting call from:", callState.callerId);
-      ws.send(JSON.stringify({
-        type: "call-accepted",
-        callerId: callState.callerId,
-      }));
-      initializePeerConnection();
-    }
-  };
+  // Accept incoming call
+const acceptCall = () => {
+  if (callState.callerId && ws) {
+    console.log("Lawyer accepting call from:", callState.callerId);
+    
+    // Update call state BEFORE sending acceptance
+    setCallState(prev => ({
+      ...prev,
+      isIncoming: false,
+      isConnected: false, // Will be set to true when WebRTC connects
+    }));
+    
+    ws.send(JSON.stringify({
+      type: "call-accepted",
+      callerId: callState.callerId,
+    }));
+    
+    // Initialize peer connection after accepting
+    setTimeout(() => initializePeerConnection(), 100);
+  }
+};
 
   // Reject incoming call
   const rejectCall = () => {
@@ -403,11 +474,17 @@ const LawyerDashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Lawyer Dashboard</h1>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-600">Status:</span>
+                 <div className="flex justify-between items-center mb-8">
+           <h1 className="text-3xl font-bold">Lawyer Dashboard</h1>
+           <div className="flex items-center space-x-4">
+             <button
+               onClick={() => window.open('/test-microphone', '_blank')}
+               className="bg-yellow-500 text-white px-3 py-2 rounded-lg hover:bg-yellow-600 text-sm"
+             >
+               🔧 Test Microphone
+             </button>
+                          <div className="flex items-center space-x-2">
+               <span className="text-sm text-gray-600">Status:</span>
               <select
                 value={status}
                 onChange={(e) => updateStatus(e.target.value)}
@@ -453,8 +530,6 @@ const LawyerDashboard: React.FC = () => {
             </div>
           </div>
         )}
-
-        {/* Call Interface */}
         {callState.isConnected ? (
           <div className="bg-white rounded-lg shadow-lg p-6">
             <div className="text-center mb-6">
@@ -466,34 +541,31 @@ const LawyerDashboard: React.FC = () => {
                 {callState.callerEmail || "Client"}
               </p>
               <div className="mt-4">
-                <div className="w-4 h-4 rounded-full mx-auto bg-green-500 animate-pulse"></div>
-                <p className="text-sm text-gray-500 mt-1">Connected</p>
-              </div>
+  <div className={`w-4 h-4 rounded-full mx-auto ${callState.isConnected ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></div>
+  <p className="text-sm text-gray-500 mt-1">
+    {callState.isConnected ? `Connected - ${formatCallDuration(callDuration)}` : 'Connecting...'}
+  </p>
+</div>
             </div>
-
-            {/* Call Controls */}
-            <div className="flex justify-center space-x-4">
-              <button
-                onClick={toggleMute}
-                className={`p-4 rounded-full flex items-center space-x-2 ${
-                  isMuted ? "bg-red-500 text-white" : "bg-gray-200 text-gray-700"
-                }`}
-              >
-                {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-              </button>
-
-              <button
-                onClick={endCall}
-                className="bg-red-500 text-white p-4 rounded-full flex items-center space-x-2 hover:bg-red-600"
-              >
-                <PhoneOff className="w-6 h-6" />
-              </button>
-            </div>
+<div className="flex justify-center space-x-4">
+  <button onClick={toggleMute}>...</button>
+  <button onClick={endCall}>...</button>
+</div>
+{remoteStream && (
+  <audio
+    ref={(audio) => {
+      if (audio && remoteStream) {
+        audio.srcObject = remoteStream;
+        audio.play().catch(console.error);
+      }
+    }}
+    autoPlay
+    style={{ display: 'none' }}
+  />
+)}
           </div>
         ) : (
-          // Main Dashboard with Chat
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Available Clients */}
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h2 className="text-xl font-bold mb-4">Available Clients</h2>
               {clients.length === 0 ? (

@@ -1,6 +1,7 @@
 "use client"
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { getBackendUrl, getWebSocketUrl } from "../config";
 
 const TestPage: React.FC = () => {
   const [backendStatus, setBackendStatus] = useState<string>("Checking...");
@@ -9,7 +10,7 @@ const TestPage: React.FC = () => {
 
   useEffect(() => {
     // Test backend connection
-    fetch("http://192.168.0.180:4000/lawyers")
+    fetch(`${getBackendUrl()}/lawyers`)
       .then(response => {
         if (response.ok) {
           setBackendStatus("✅ Connected");
@@ -22,7 +23,7 @@ const TestPage: React.FC = () => {
       });
 
     // Get debug info
-    fetch("http://192.168.0.180:4000/debug")
+    fetch(`${getBackendUrl()}/debug`)
       .then(response => response.json())
       .then(data => {
         setDebugInfo(data);
@@ -32,7 +33,7 @@ const TestPage: React.FC = () => {
       });
 
     // Test WebSocket connection
-    const ws = new WebSocket("ws://192.168.0.180:4000");
+    const ws = new WebSocket(getWebSocketUrl());
     
     ws.onopen = () => {
       setWsStatus("✅ Connected");
@@ -142,17 +143,30 @@ const TestPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow-lg p-6 mt-6">
-          <h2 className="text-xl font-bold mb-4">Testing Instructions</h2>
-          <ol className="list-decimal list-inside space-y-2">
-            <li>Open the application on your computer: <span className="font-mono text-blue-600">http://192.168.0.180:3001</span></li>
-            <li>Open the application on your mobile device: <span className="font-mono text-blue-600">http://192.168.0.180:3001</span></li>
-            <li>Register/login as a CLIENT on one device</li>
-            <li>Register/login as a LAWYER on another device</li>
-            <li>Test the chat functionality between client and lawyer</li>
-            <li>Test the voice call functionality</li>
-          </ol>
-        </div>
+                 <div className="bg-white rounded-lg shadow-lg p-6 mt-6">
+           <h2 className="text-xl font-bold mb-4">Testing Instructions</h2>
+           <ol className="list-decimal list-inside space-y-2">
+             <li>Open the application on your computer: <span className="font-mono text-blue-600">http://192.168.0.180:3001</span></li>
+             <li>Open the application on your mobile device: <span className="font-mono text-blue-600">http://192.168.0.180:3001</span></li>
+             <li>Register/login as a CLIENT on one device</li>
+             <li>Register/login as a LAWYER on another device</li>
+             <li>Test the chat functionality between client and lawyer</li>
+             <li>Test the voice call functionality</li>
+           </ol>
+           
+           <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+             <h3 className="font-semibold text-blue-800 mb-2">Having microphone issues?</h3>
+             <p className="text-blue-700 text-sm mb-3">
+               If you're experiencing "Failed to access camera/microphone" errors, test your microphone first:
+             </p>
+             <Link 
+               href="/test-microphone" 
+               className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 text-sm"
+             >
+               Test Microphone
+             </Link>
+           </div>
+         </div>
       </div>
     </div>
   );

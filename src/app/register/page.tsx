@@ -1,5 +1,6 @@
 "use client"
 import React, { useState } from "react";
+import { getBackendUrl } from "../config";
 
 const RegisterPage = () => {
   const [formData, setFormData] = useState({
@@ -17,7 +18,7 @@ const RegisterPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch("http://192.168.0.180:4000/register", {
+      const response = await fetch(`${getBackendUrl()}/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
